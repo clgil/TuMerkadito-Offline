@@ -4,6 +4,21 @@ const API_BASE = '/api/v1';
 let currentUser = null;
 // currentTurno se maneja en el módulo de turnos/pos
 
+// Títulos de las vistas para el header
+const VIEW_TITLES = {
+  'login': '🛒 Tu Merkadito',
+  'dashboard': '🏠 Panel de Control',
+  'pos': '🛒 Punto de Venta',
+  'turnos': '⏰ Gestión de Turnos',
+  'inventario': '📦 Inventario',
+  'reportes': '📊 Reportes',
+  'configuracion': '⚙️ Configuración',
+  'trabajadores': '👥 Trabajadores',
+  'puntos-venta': '🏪 Puntos de Venta',
+  'usuarios': '🔐 Usuarios',
+  'productos': '🏷️ Productos'
+};
+
 // Utilidades
 function $(selector) { return document.querySelector(selector); }
 function $$(selector) { return document.querySelectorAll(selector); }
@@ -32,6 +47,13 @@ function showLoading(show = true) {
   if (overlay) overlay.style.display = show ? 'flex' : 'none';
 }
 
+function updateHeaderTitle(viewId) {
+  const titleEl = $('#header-title');
+  if (titleEl) {
+    titleEl.textContent = VIEW_TITLES[viewId] || '🛒 Tu Merkadito';
+  }
+}
+
 function showView(viewId) {
   $$('.view').forEach(v => v.classList.remove('active'));
   const target = $(`#view-${viewId}`);
@@ -39,6 +61,9 @@ function showView(viewId) {
     target.classList.add('active');
     target.focus();
   }
+  
+  // Actualizar título del header
+  updateHeaderTitle(viewId);
   
   // Actualizar navegación activa
   updateNavigation(viewId);
@@ -51,10 +76,14 @@ function showView(viewId) {
   if (viewId === 'reportes') loadReportes();
   if (viewId === 'usuarios') loadUsuarios && loadUsuarios();
   if (viewId === 'productos') loadProductos && loadProductos();
+  if (viewId === 'configuracion') loadConfiguracion && loadConfiguracion();
+  if (viewId === 'trabajadores') loadTrabajadores && loadTrabajadores();
+  if (viewId === 'puntos-venta') loadPuntosVenta && loadPuntosVenta();
 }
 
 function updateNavigation(viewId) {
-  // Actualizar bottom nav
+  // Actualizar bottom nav (solo vistas principales)
+  const mainViews = ['dashboard', 'pos', 'turnos', 'inventario', 'reportes'];
   $$('.bottom-nav-item').forEach(item => {
     item.classList.toggle('active', item.dataset.navigate === viewId);
   });
@@ -134,6 +163,17 @@ function setupNavigation() {
     });
   });
   
+  // Botón de sincronización manual en drawer
+  $('#drawer-sync-btn')?.addEventListener('click', () => {
+    doManualSync();
+    toggleDrawer(false);
+  });
+  
+  // Click en el indicador de sincronización del header también permite sincronizar
+  $('#sync-indicator')?.addEventListener('click', () => {
+    doManualSync();
+  });
+  
   // Logout del drawer
   $('#drawer-logout')?.addEventListener('click', logout);
   
@@ -152,6 +192,31 @@ function setupNavigation() {
       });
     }
   });
+}
+
+// Sincronización manual
+async function doManualSync() {
+  showLoading(true);
+  updateSyncStatus('syncing');
+  
+  try {
+    // Simular sincronización - en producción esto llamaría a la API
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    
+    // Actualizar datos locales si es necesario
+    if (currentUser) {
+      loadDashboard();
+    }
+    
+    updateSyncStatus('synced');
+    showToast('Sincronización completada exitosamente');
+  } catch (error) {
+    console.error('Error en sincronización:', error);
+    updateSyncStatus('error');
+    showToast('Error al sincronizar. Intente nuevamente.', 'error');
+  } finally {
+    showLoading(false);
+  }
 }
 
 // Dashboard
@@ -250,6 +315,39 @@ function initApp() {
       }
     }
   });
+}
+
+// Placeholder functions for new views (pueden ser implementadas después)
+function loadConfiguracion() {
+  // Cargar configuración desde localStorage o API
+  const config = JSON.parse(localStorage.getItem('config') || '{}');
+  $('#config-nombre').value = config.nombre || '';
+  $('#config-nit').value = config.nit || '';
+  $('#config-direccion').value = config.direccion || '';
+  $('#config-telefono').value = config.telefono || '';
+}
+
+// Guardar configuración
+$('#config-form')?.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const config = {
+    nombre: $('#config-nombre').value,
+    nit: $('#config-nit').value,
+    direccion: $('#config-direccion').value,
+    telefono: $('#config-telefono').value
+  };
+  localStorage.setItem('config', JSON.stringify(config));
+  showToast('Configuración guardada exitosamente');
+});
+
+function loadTrabajadores() {
+  // Placeholder - implementar carga de trabajadores
+  console.log('Cargando trabajadores...');
+}
+
+function loadPuntosVenta() {
+  // Placeholder - implementar carga de puntos de venta
+  console.log('Cargando puntos de venta...');
 }
 
 function logout() {
