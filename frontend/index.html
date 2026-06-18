@@ -3,25 +3,92 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#4F46E5">
+  <meta name="theme-color" content="#0ea5e9">
   <meta name="description" content="Tu Merkadito - Sistema de gestión empresarial offline-first para Cuba">
   <title>Tu Merkadito - Sistema de Gestión</title>
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
-  <a href="#app-main" class="skip-link">Saltar al contenido</a>
+  <a href="#app-main" class="skip-link">Saltar al contenido principal</a>
   
+  <!-- OVERLAY DEL DRAWER -->
+  <div id="drawer-overlay" class="drawer-overlay" role="presentation"></div>
+  
+  <!-- DRAWER LATERAL -->
+  <aside id="app-drawer" class="drawer" role="dialog" aria-modal="true" aria-label="Menú de navegación">
+    <div class="drawer-header">
+      <h3>🛒 Tu Merkadito</h3>
+      <button id="drawer-close" class="drawer-close" aria-label="Cerrar menú">&times;</button>
+    </div>
+    <nav class="drawer-content">
+      <div class="drawer-section">
+        <div class="drawer-section-title">Navegación</div>
+        <a href="#" class="drawer-item active" data-navigate="dashboard">
+          <span class="drawer-item-icon">🏠</span>
+          <span>Inicio</span>
+        </a>
+        <a href="#" class="drawer-item" data-navigate="pos">
+          <span class="drawer-item-icon">🛒</span>
+          <span>Punto de Venta</span>
+        </a>
+        <a href="#" class="drawer-item" data-navigate="turnos">
+          <span class="drawer-item-icon">⏰</span>
+          <span>Turnos</span>
+        </a>
+        <a href="#" class="drawer-item" data-navigate="inventario">
+          <span class="drawer-item-icon">📦</span>
+          <span>Inventario</span>
+        </a>
+        <a href="#" class="drawer-item" data-navigate="reportes">
+          <span class="drawer-item-icon">📊</span>
+          <span>Reportes</span>
+        </a>
+      </div>
+      
+      <div class="drawer-section" id="drawer-admin-section" style="display:none;">
+        <div class="drawer-section-title">Administración</div>
+        <a href="#" class="drawer-item" data-navigate="usuarios">
+          <span class="drawer-item-icon">👥</span>
+          <span>Usuarios</span>
+        </a>
+        <a href="#" class="drawer-item" data-navigate="productos">
+          <span class="drawer-item-icon">🏷️</span>
+          <span>Productos</span>
+        </a>
+      </div>
+      
+      <div class="drawer-section">
+        <div class="drawer-section-title">Cuenta</div>
+        <div class="drawer-item" id="drawer-user-info">
+          <span class="drawer-item-icon">👤</span>
+          <span id="drawer-user-name">Usuario</span>
+        </div>
+        <button id="drawer-logout" class="drawer-item" style="width:100%;text-align:left;border:none;cursor:pointer;">
+          <span class="drawer-item-icon">🚪</span>
+          <span>Cerrar Sesión</span>
+        </button>
+      </div>
+    </nav>
+  </aside>
+  
+  <!-- HEADER -->
   <header id="app-header" class="header" role="banner">
     <div class="header-content">
-      <h1 class="logo">🛒 Tu Merkadito</h1>
+      <div style="display:flex;align-items:center;gap:1rem;">
+        <button id="header-menu-btn" class="header-menu-btn" aria-label="Abrir menú">☰</button>
+        <h1 class="logo">🛒 Tu Merkadito</h1>
+      </div>
       <div class="header-info">
         <span id="connection-status" class="status-indicator online" role="status" aria-live="polite">
           <span class="status-dot"></span>
           <span class="status-text">En línea</span>
         </span>
-        <span id="user-info" class="user-info"></span>
-        <button id="btn-logout" class="btn btn-sm btn-outline">Salir</button>
+        <button id="sync-indicator" class="sync-indicator" aria-label="Estado de sincronización">
+          <span class="sync-icon">☁️</span>
+          <span class="sync-text">Sincronizado</span>
+        </button>
+        <span id="user-info" class="user-info" style="display:none;"></span>
       </div>
     </div>
   </header>
@@ -258,15 +325,15 @@
         <div class="card">
           <div class="filters-bar flex-wrap">
             <div class="form-group">
-              <label>Desde:</label>
+              <label for="reporte-desde">Desde:</label>
               <input type="date" id="reporte-desde">
             </div>
             <div class="form-group">
-              <label>Hasta:</label>
+              <label for="reporte-hasta">Hasta:</label>
               <input type="date" id="reporte-hasta">
             </div>
             <div class="form-group">
-              <label>Tipo:</label>
+              <label for="reporte-tipo">Tipo:</label>
               <select id="reporte-tipo">
                 <option value="ventas">Ventas</option>
                 <option value="inventario">Inventario</option>
@@ -282,12 +349,48 @@
     </section>
   </main>
 
-  <!-- MODAL GENERICO -->
+  <!-- BARRA DE NAVEGACIÓN INFERIOR (MÓVIL) -->
+  <nav id="bottom-nav" class="bottom-nav" role="navigation" aria-label="Navegación principal">
+    <ul class="bottom-nav-list">
+      <li>
+        <button class="bottom-nav-item active" data-navigate="dashboard" aria-label="Ir a Inicio">
+          <span class="bottom-nav-icon">🏠</span>
+          <span class="bottom-nav-label">Inicio</span>
+        </button>
+      </li>
+      <li>
+        <button class="bottom-nav-item" data-navigate="pos" aria-label="Ir a Punto de Venta">
+          <span class="bottom-nav-icon">🛒</span>
+          <span class="bottom-nav-label">POS</span>
+        </button>
+      </li>
+      <li>
+        <button class="bottom-nav-item" data-navigate="turnos" aria-label="Ir a Turnos">
+          <span class="bottom-nav-icon">⏰</span>
+          <span class="bottom-nav-label">Turnos</span>
+        </button>
+      </li>
+      <li>
+        <button class="bottom-nav-item" data-navigate="inventario" aria-label="Ir a Inventario">
+          <span class="bottom-nav-icon">📦</span>
+          <span class="bottom-nav-label">Inventario</span>
+        </button>
+      </li>
+      <li>
+        <button class="bottom-nav-item" data-navigate="reportes" aria-label="Ir a Reportes">
+          <span class="bottom-nav-icon">📊</span>
+          <span class="bottom-nav-label">Reportes</span>
+        </button>
+      </li>
+    </ul>
+  </nav>
+
+  <!-- MODAL GENÉRICO -->
   <div id="modal-generico" class="modal" role="dialog" aria-modal="true">
     <div class="modal-content">
       <div class="modal-header">
         <h3 id="modal-generico-title">Título</h3>
-        <button class="btn-close">&times;</button>
+        <button class="btn-close" aria-label="Cerrar">&times;</button>
       </div>
       <div id="modal-generico-body" class="modal-body"></div>
       <div class="modal-footer">
@@ -302,6 +405,12 @@
 
   <!-- TICKET PRINT -->
   <div id="ticket-print" class="ticket-print"></div>
+
+  <!-- LOADING OVERLAY -->
+  <div id="loading-overlay" class="loading-overlay" style="display:none;" role="alert" aria-busy="true">
+    <div class="spinner"></div>
+    <span class="loading-text">Cargando...</span>
+  </div>
 
   <script src="js/app.js"></script>
   <script src="js/auth.js"></script>
