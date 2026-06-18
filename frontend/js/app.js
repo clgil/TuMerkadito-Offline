@@ -2,7 +2,7 @@
 
 const API_BASE = '/api/v1';
 let currentUser = null;
-let currentTurno = null;
+// currentTurno se maneja en el módulo de turnos/pos
 
 // Utilidades
 function $(selector) { return document.querySelector(selector); }
@@ -27,6 +27,11 @@ function showToast(message, type = 'success') {
   setTimeout(() => toast.remove(), 3000);
 }
 
+function showLoading(show = true) {
+  const overlay = $('#loading-overlay');
+  if (overlay) overlay.style.display = show ? 'flex' : 'none';
+}
+
 function showView(viewId) {
   $$('.view').forEach(v => v.classList.remove('active'));
   const target = $(`#view-${viewId}`);
@@ -34,6 +39,9 @@ function showView(viewId) {
     target.classList.add('active');
     target.focus();
   }
+  
+  // Actualizar navegación activa
+  updateNavigation(viewId);
   
   // Cargar datos según vista
   if (viewId === 'dashboard') loadDashboard();
@@ -43,6 +51,34 @@ function showView(viewId) {
   if (viewId === 'reportes') loadReportes();
   if (viewId === 'usuarios') loadUsuarios && loadUsuarios();
   if (viewId === 'productos') loadProductos && loadProductos();
+}
+
+function updateNavigation(viewId) {
+  // Actualizar bottom nav
+  $$('.bottom-nav-item').forEach(item => {
+    item.classList.toggle('active', item.dataset.navigate === viewId);
+  });
+  
+  // Actualizar drawer items
+  $$('.drawer-item[data-navigate]').forEach(item => {
+    item.classList.toggle('active', item.dataset.navigate === viewId);
+  });
+}
+
+// Drawer functionality
+function toggleDrawer(open = true) {
+  const drawer = $('#app-drawer');
+  const overlay = $('#drawer-overlay');
+  
+  if (open) {
+    drawer.classList.add('active');
+    overlay.classList.add('active');
+    drawer.setAttribute('aria-hidden', 'false');
+  } else {
+    drawer.classList.remove('active');
+    overlay.classList.remove('active');
+    drawer.setAttribute('aria-hidden', 'true');
+  }
 }
 
 // Estado de conexión
@@ -59,15 +95,62 @@ function updateConnectionStatus() {
   }
 }
 
+// Sync indicator
+function updateSyncStatus(status = 'synced', pending = 0) {
+  const indicator = $('#sync-indicator');
+  const text = indicator.querySelector('.sync-text');
+  
+  indicator.classList.remove('syncing', 'error');
+  
+  if (status === 'syncing') {
+    indicator.classList.add('syncing');
+    text.textContent = 'Sincronizando...';
+  } else if (status === 'error') {
+    indicator.classList.add('error');
+    text.textContent = 'Error sincronización';
+  } else if (pending > 0) {
+    text.textContent = `${pending} pendiente(s)`;
+  } else {
+    text.textContent = 'Sincronizado';
+  }
+}
+
 window.addEventListener('online', updateConnectionStatus);
 window.addEventListener('offline', updateConnectionStatus);
 
 // Navegación
 function setupNavigation() {
-  $$('[data-navigate]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      showView(btn.dataset.navigate);
+  // Botón de menú hamburguesa
+  $('#header-menu-btn')?.addEventListener('click', () => toggleDrawer(true));
+  $('#drawer-close')?.addEventListener('click', () => toggleDrawer(false));
+  $('#drawer-overlay')?.addEventListener('click', () => toggleDrawer(false));
+  
+  // Items del drawer
+  $$('.drawer-item[data-navigate]').forEach(item => {
+    item.addEventListener('click', (e) => {
+      e.preventDefault();
+      showView(item.dataset.navigate);
+      toggleDrawer(false);
     });
+  });
+  
+  // Logout del drawer
+  $('#drawer-logout')?.addEventListener('click', logout);
+  
+  // Bottom nav
+  $$('.bottom-nav-item').forEach(item => {
+    item.addEventListener('click', () => {
+      showView(item.dataset.navigate);
+    });
+  });
+  
+  // Otros botones de navegación
+  $$('[data-navigate]').forEach(btn => {
+    if (!btn.classList.contains('bottom-nav-item') && !btn.classList.contains('drawer-item')) {
+      btn.addEventListener('click', () => {
+        showView(btn.dataset.navigate);
+      });
+    }
   });
 }
 
@@ -141,24 +224,41 @@ document.addEventListener('DOMContentLoaded', () => {
   } else {
     showView('login');
   }
-  
-  $('#btn-logout')?.addEventListener('click', logout);
 });
 
 function initApp() {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   currentUser = user;
   
+  // Actualizar info de usuario en header y drawer
   $('#user-info').textContent = `${user.nombre || ''} (${user.rol || ''})`;
+  $('#drawer-user-name').textContent = `${user.nombre || 'Usuario'}`;
+  
+  // Mostrar sección admin si corresponde
+  const esAdmin = ['admin', 'dueño'].includes(user.rol);
+  $('#drawer-admin-section').style.display = esAdmin ? 'block' : 'none';
+  
   showView('dashboard');
   loadDashboard();
+  
+  // Cerrar sesión con Escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const drawer = $('#app-drawer');
+      if (drawer.classList.contains('active')) {
+        toggleDrawer(false);
+      }
+    }
+  });
 }
 
 function logout() {
   localStorage.removeItem('auth_token');
   localStorage.removeItem('user');
   currentUser = null;
-  showView('login');
   $('#user-info').textContent = '';
+  $('#drawer-user-name').textContent = 'Usuario';
+  showView('login');
+  toggleDrawer(false);
   showToast('Sesión cerrada correctamente');
 }
