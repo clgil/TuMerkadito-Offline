@@ -3,6 +3,7 @@ const path = require('path');
 const db = require('../database');
 const archiver = require('archiver');
 const fs = require('fs');
+const { authMiddleware, canViewFinancialReports, canCloseOthersTurns } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -10,17 +11,14 @@ const router = express.Router();
  * GET /api/v1/sync/pendientes
  * Listar ventas pendientes de sincronización con la nube
  */
-router.get('/pendientes', (req, res) => {
+router.get('/pendientes', authMiddleware, (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Token no proporcionado' });
-    }
+    const decoded = req.user;
     
-    const token = authHeader.split(' ')[1];
-    const jwt = require('jsonwebtoken');
-    const { JWT_SECRET } = require('../middleware/auth');
-    const decoded = jwt.verify(token, JWT_SECRET);
+    // Solo admin o dueño pueden ver pendientes de sincronización
+    if (!['admin', 'dueño'].includes(decoded.rol)) {
+      return res.status(403).json({ error: 'No tiene permisos para ver sincronización' });
+    }
     
     const pendientes = db.prepare(`
       SELECT v.*, u.nombre as vendedor_nombre
@@ -42,17 +40,9 @@ router.get('/pendientes', (req, res) => {
  * POST /api/v1/sync/exportar
  * Exportar datos a archivo ZIP para respaldo
  */
-router.post('/exportar', (req, res) => {
+router.post('/exportar', authMiddleware, (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Token no proporcionado' });
-    }
-    
-    const token = authHeader.split(' ')[1];
-    const jwt = require('jsonwebtoken');
-    const { JWT_SECRET } = require('../middleware/auth');
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = req.user;
     
     // Solo admin o dueño pueden exportar
     if (!['admin', 'dueño'].includes(decoded.rol)) {
@@ -145,17 +135,14 @@ router.post('/exportar', (req, res) => {
  * GET /api/v1/reportes/ventas
  * Reporte de ventas por período
  */
-router.get('/reportes/ventas', (req, res) => {
+router.get('/reportes/ventas', authMiddleware, (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Token no proporcionado' });
-    }
+    const decoded = req.user;
     
-    const token = authHeader.split(' ')[1];
-    const jwt = require('jsonwebtoken');
-    const { JWT_SECRET } = require('../middleware/auth');
-    const decoded = jwt.verify(token, JWT_SECRET);
+    // Verificar permisos para ver reportes financieros
+    if (!canViewFinancialReports(decoded)) {
+      return res.status(403).json({ error: 'No tiene permisos para ver reportes financieros' });
+    }
     
     const { fecha_desde, fecha_hasta, agrupar_por = 'dia' } = req.query;
     
@@ -199,17 +186,14 @@ router.get('/reportes/ventas', (req, res) => {
  * GET /api/v1/reportes/productos
  * Reporte de productos más/menos vendidos
  */
-router.get('/reportes/productos', (req, res) => {
+router.get('/reportes/productos', authMiddleware, (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Token no proporcionado' });
-    }
+    const decoded = req.user;
     
-    const token = authHeader.split(' ')[1];
-    const jwt = require('jsonwebtoken');
-    const { JWT_SECRET } = require('../middleware/auth');
-    const decoded = jwt.verify(token, JWT_SECRET);
+    // Verificar permisos para ver reportes (admin, dueño o almacenero pueden ver productos)
+    if (!['admin', 'dueño', 'almacenero'].includes(decoded.rol)) {
+      return res.status(403).json({ error: 'No tiene permisos para ver reportes de productos' });
+    }
     
     const { tipo = 'mas_vendidos', limite = 10, fecha_desde, fecha_hasta } = req.query;
     
@@ -253,17 +237,14 @@ router.get('/reportes/productos', (req, res) => {
  * GET /api/v1/reportes/resumen
  * Resumen general del día
  */
-router.get('/reportes/resumen', (req, res) => {
+router.get('/reportes/resumen', authMiddleware, (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Token no proporcionado' });
-    }
+    const decoded = req.user;
     
-    const token = authHeader.split(' ')[1];
-    const jwt = require('jsonwebtoken');
-    const { JWT_SECRET } = require('../middleware/auth');
-    const decoded = jwt.verify(token, JWT_SECRET);
+    // Verificar permisos para ver reportes financieros
+    if (!canViewFinancialReports(decoded)) {
+      return res.status(403).json({ error: 'No tiene permisos para ver reportes financieros' });
+    }
     
     // Ventas del día
     const ventasDia = db.prepare(`

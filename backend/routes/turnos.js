@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../database');
+const { authMiddleware, canCloseOthersTurns } = require('../middleware/auth');
 
 /**
  * GET /api/v1/turnos/activo
@@ -50,19 +51,15 @@ router.get('/activo', (req, res) => {
  * POST /api/v1/turnos/abrir
  * Abrir nuevo turno
  */
-router.post('/abrir', (req, res) => {
+router.post('/abrir', authMiddleware, (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Token no proporcionado' });
-    }
-    
-    const token = authHeader.split(' ')[1];
-    const jwt = require('jsonwebtoken');
-    const { JWT_SECRET } = require('../middleware/auth');
-    const decoded = jwt.verify(token, JWT_SECRET);
-    
     const { punto_venta_id, monto_inicial } = req.body;
+    const decoded = req.user;
+    
+    // Verificar que el usuario tiene permiso para abrir turnos (vendedor, admin o dueño)
+    if (!['vendedor', 'admin', 'dueño'].includes(decoded.rol)) {
+      return res.status(403).json({ error: 'No tiene permisos para abrir turnos' });
+    }
     
     // Si no se proporciona punto_venta_id, usar el del usuario
     const pvId = punto_venta_id || decoded.punto_venta_id;
@@ -111,18 +108,9 @@ router.post('/abrir', (req, res) => {
  * POST /api/v1/turnos/cerrar
  * Cerrar turno con conteo final
  */
-router.post('/cerrar', (req, res) => {
+router.post('/cerrar', authMiddleware, (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Token no proporcionado' });
-    }
-    
-    const token = authHeader.split(' ')[1];
-    const jwt = require('jsonwebtoken');
-    const { JWT_SECRET } = require('../middleware/auth');
-    const decoded = jwt.verify(token, JWT_SECRET);
-    
+    const decoded = req.user;
     const { turno_id, monto_efectivo, monto_transferencias, nota_ajuste } = req.body;
     
     if (!turno_id) {
@@ -139,9 +127,16 @@ router.post('/cerrar', (req, res) => {
       return res.status(404).json({ error: 'Turno no encontrado o ya cerrado' });
     }
     
-    // Verificar permisos (solo el vendedor o admin/dueño pueden cerrar)
-    if (turno.vendedor_id !== decoded.id && !['admin', 'dueño'].includes(decoded.rol)) {
-      return res.status(403).json({ error: 'No tiene permisos para cerrar este turno' });
+    // Verificar permisos para cerrar turnos
+    // - El propio vendedor puede cerrar su turno
+    // - Admin y Dueño pueden cerrar cualquier turno
+    const puedeCerrarPropio = turno.vendedor_id === decoded.id;
+    const puedeCerrarAjenos = canCloseOthersTurns(decoded);
+    
+    if (!puedeCerrarPropio && !puedeCerrarAjenos) {
+      return res.status(403).json({ 
+        error: 'No tiene permisos para cerrar este turno. Solo puede cerrar sus propios turnos.' 
+      });
     }
     
     // Calcular monto esperado (monto inicial + ventas en efectivo)
@@ -152,7 +147,7 @@ router.post('/cerrar', (req, res) => {
     `).get(turno_id);
     
     const ventasTransferencia = db.prepare(`
-      SELECT COALESCE(SUM(monto_transferencias), 0) as total_transferencia
+      SELECT COALESCE(SUM(total - efectivo_recibido), 0) as total_transferencia
       FROM ventas
       WHERE turno_id = ? AND estado = 'completada' AND metodo_pago IN ('transferencia', 'mixto')
     `).get(turno_id);
