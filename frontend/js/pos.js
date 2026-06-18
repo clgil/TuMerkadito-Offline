@@ -3,7 +3,6 @@
 let cart = [];
 let products = [];
 let categorias = [];
-let currentTurno = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   // Event listeners del POS
