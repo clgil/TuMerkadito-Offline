@@ -40,7 +40,7 @@ app.use('/api/v1/productos', productosRoutes);
 app.use('/api/v1/turnos', turnosRoutes);
 app.use('/api/v1/ventas', ventasRoutes);
 app.use('/api/v1/inventario', inventarioRoutes);
-app.use('/api/v1/sync', syncRoutes);
+app.use('/api/v1', syncRoutes); // Incluye rutas /reportes/*
 
 // Health check
 app.get('/api/v1/health', (req, res) => {
