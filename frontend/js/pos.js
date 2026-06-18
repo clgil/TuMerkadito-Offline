@@ -1,317 +1,422 @@
-// Tu Merkadito - Punto de Venta (POS)
+// Tu Merkadito - Módulo POS
 
 let cart = [];
 let products = [];
-let categories = [];
+let categorias = [];
+let currentTurno = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Event listeners del POS
+  $('#pos-search')?.addEventListener('input', filtrarProductos);
+  $('#btn-clear-cart')?.addEventListener('click', clearCart);
+  $('#btn-checkout')?.addEventListener('click', showCheckoutModal);
+  
+  // Modal checkout
+  $$('.btn-close, .modal-footer .btn-secondary').forEach(btn => {
+    btn.addEventListener('click', () => closeModal('modal-checkout'));
+  });
+  
+  $('#efectivo-recibido')?.addEventListener('input', calcularCambio);
+  $('#btn-confirm-sale')?.addEventListener('click', confirmarVenta);
+  
+  // Cerrar modal con Escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeModal('modal-checkout');
+    }
+  });
+});
 
 async function loadPOS() {
   try {
-    // Verificar si hay turno activo
+    // Verificar turno activo
     await checkTurnoActivo();
     
     // Cargar productos
-    const response = await apiFetch('/productos?search=');
-    products = await response.json();
+    const response = await apiFetch('/productos?activo=1');
+    const data = await response.json();
+    products = data.productos || data;
     
-    renderProducts(products);
-    renderCategories();
+    // Extraer categorías únicas
+    categorias = [...new Set(products.map(p => p.categoria).filter(Boolean))];
+    renderCategorias();
+    
+    // Renderizar productos
+    renderProductos(products);
     
   } catch (error) {
     console.error('Error cargando POS:', error);
-    showToast('Error al cargar productos', 'error');
+    showToast('Error cargando productos', 'error');
   }
 }
 
 async function checkTurnoActivo() {
   try {
-    const user = JSON.parse(localStorage.getItem('user'));
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
     const response = await apiFetch(`/turnos/activo?vendedor_id=${user.id}`);
-    currentTurno = await response.json();
+    const data = await response.json();
     
-    if (!currentTurno && ['vendedor'].includes(user.rol)) {
-      // Mostrar mensaje para abrir turno
-      if (confirm('No tienes un turno abierto. ¿Deseas abrir uno ahora?')) {
-        await openTurno();
+    currentTurno = data.turno;
+    
+    const turnoInfo = $('#pos-turno-info');
+    if (turnoInfo) {
+      if (currentTurno) {
+        turnoInfo.innerHTML = `
+          <strong>✅ Turno Activo</strong><br>
+          ${currentTurno.vendedor_nombre}<br>
+          Caja inicial: ${formatCurrency(currentTurno.monto_inicial)}
+        `;
+      } else {
+        turnoInfo.innerHTML = `
+          <strong>⚠️ Sin Turno</strong><br>
+          Debe abrir un turno para vender
+        `;
       }
     }
+    
+    // Deshabilitar cobro si no hay turno
+    const btnCheckout = $('#btn-checkout');
+    if (btnCheckout) {
+      btnCheckout.disabled = !currentTurno;
+      if (!currentTurno) {
+        btnCheckout.textContent = 'Abra turno primero';
+      } else {
+        btnCheckout.textContent = '💵 Cobrar';
+      }
+    }
+    
   } catch (error) {
     console.error('Error verificando turno:', error);
   }
 }
 
-async function openTurno() {
-  try {
-    const montoInicial = prompt('Monto inicial de caja (opcional):', '0') || '0';
-    
-    const response = await apiFetch('/turnos/abrir', {
-      method: 'POST',
-      body: JSON.stringify({ monto_inicial: parseFloat(montoInicial) })
+function renderCategorias() {
+  const container = $('#pos-categories');
+  if (!container) return;
+  
+  container.innerHTML = `
+    <button class="category-btn active" data-categoria="todos" role="tab">Todos</button>
+    ${categorias.map(cat => `
+      <button class="category-btn" data-categoria="${cat}" role="tab">${cat}</button>
+    `).join('')}
+  `;
+  
+  // Event listeners para categorías
+  container.querySelectorAll('.category-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      container.querySelectorAll('.category-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      filtrarPorCategoria(btn.dataset.categoria);
     });
-    
-    const data = await response.json();
-    
-    if (response.ok) {
-      currentTurno = data.turno;
-      showToast('Turno abierto exitosamente', 'success');
-    } else {
-      showToast(data.error, 'error');
-    }
-  } catch (error) {
-    showToast('Error al abrir turno', 'error');
-  }
+  });
 }
 
-function renderProducts(productos) {
+function renderProductos(lista) {
   const container = $('#pos-products');
+  if (!container) return;
   
-  if (productos.length === 0) {
+  if (lista.length === 0) {
     container.innerHTML = '<p style="grid-column: 1/-1; text-align: center; padding: 2rem;">No se encontraron productos</p>';
     return;
   }
   
-  container.innerHTML = productos.map(p => `
-    <div class="product-card ${p.stock_actual === 0 ? 'out-of-stock' : p.stock_actual <= p.stock_minimo ? 'low-stock' : ''}" 
-         data-id="${p.id}" 
-         onclick="addToCart(${p.id})">
-      <h4>${p.nombre}</h4>
-      <div class="price">${formatCurrency(p.precio)}</div>
-      <div class="stock">Stock: ${p.stock_actual} ${p.unidad}</div>
-    </div>
-  `).join('');
+  container.innerHTML = lista.map(prod => {
+    const sinStock = prod.stock_actual <= 0;
+    const bajoStock = prod.stock_actual <= prod.stock_minimo && prod.stock_actual > 0;
+    
+    return `
+      <div class="product-card ${sinStock ? 'out-of-stock' : ''} ${bajoStock ? 'low-stock' : ''}" 
+           tabindex="0" 
+           role="gridcell"
+           aria-label="${prod.nombre}, precio ${formatCurrency(prod.precio)}, stock ${prod.stock_actual}"
+           onclick="addToCart(${prod.id})"
+           onkeypress="if(event.key==='Enter') addToCart(${prod.id})">
+        <h4>${prod.nombre}</h4>
+        <div class="price">${formatCurrency(prod.precio)}</div>
+        <div class="stock">📦 Stock: ${prod.stock_actual} ${prod.unidad || 'ud'}</div>
+      </div>
+    `;
+  }).join('');
 }
 
-function renderCategories() {
-  // Agrupar productos por categoría
-  const cats = [...new Set(products.map(p => p.categoria_nombre).filter(Boolean))];
-  categories = ['todos', ...cats];
+function filtrarProductos(e) {
+  const term = e.target.value.toLowerCase().trim();
   
-  const container = $('#pos-categories');
-  container.innerHTML = categories.map(cat => `
-    <button class="category-btn ${cat === 'todos' ? 'active' : ''}" 
-            data-categoria="${cat}"
-            onclick="filterByCategory('${cat}')">
-      ${cat.charAt(0).toUpperCase() + cat.slice(1)}
-    </button>
-  `).join('');
-}
-
-function filterByCategory(categoria) {
-  $$('.category-btn').forEach(btn => btn.classList.remove('active'));
-  $(`.category-btn[data-categoria="${categoria}"]`)?.classList.add('active');
-  
-  if (categoria === 'todos') {
-    renderProducts(products);
-  } else {
-    const filtered = products.filter(p => p.categoria_nombre === categoria);
-    renderProducts(filtered);
+  if (!term) {
+    renderProductos(products);
+    return;
   }
-}
-
-// Búsqueda
-$('#pos-search')?.addEventListener('input', (e) => {
-  const term = e.target.value.toLowerCase();
   
-  const filtered = products.filter(p => 
-    p.nombre.toLowerCase().includes(term) || 
+  const filtrados = products.filter(p => 
+    p.nombre.toLowerCase().includes(term) ||
     (p.codigo && p.codigo.toLowerCase().includes(term))
   );
   
-  renderProducts(filtered);
-});
+  renderProductos(filtrados);
+}
+
+function filtrarPorCategoria(categoria) {
+  if (categoria === 'todos') {
+    renderProductos(products);
+  } else {
+    const filtrados = products.filter(p => p.categoria === categoria);
+    renderProductos(filtrados);
+  }
+}
 
 function addToCart(productId) {
-  const product = products.find(p => p.id === productId);
-  
-  if (!product || product.stock_actual <= 0) {
+  const producto = products.find(p => p.id === productId);
+  if (!producto || producto.stock_actual <= 0) {
     showToast('Producto sin stock', 'error');
     return;
   }
   
-  const existingItem = cart.find(item => item.producto_id === productId);
+  const itemEnCarrito = cart.find(i => i.id === productId);
   
-  if (existingItem) {
-    if (existingItem.cantidad < product.stock_actual) {
-      existingItem.cantidad++;
-    } else {
+  if (itemEnCarrito) {
+    if (itemEnCarrito.cantidad >= producto.stock_actual) {
       showToast('No hay más stock disponible', 'warning');
       return;
     }
+    itemEnCarrito.cantidad++;
   } else {
     cart.push({
-      producto_id: productId,
-      nombre: product.nombre,
-      precio: product.precio,
+      id: producto.id,
+      nombre: producto.nombre,
+      precio: producto.precio,
       cantidad: 1,
-      descuento: 0
+      stock: producto.stock_actual
     });
   }
   
-  updateCartUI();
+  renderCart();
+  showToast(`"${producto.nombre}" agregado`);
 }
 
-function updateCartUI() {
+function renderCart() {
   const container = $('#cart-items');
+  if (!container) return;
   
   if (cart.length === 0) {
-    container.innerHTML = '<p style="text-align: center; padding: 2rem; color: var(--text-secondary);">Carrito vacío</p>';
-  } else {
-    container.innerHTML = cart.map((item, index) => `
-      <div class="cart-item">
-        <div class="cart-item-info">
-          <div class="cart-item-name">${item.nombre}</div>
-          <div class="cart-item-price">${formatCurrency(item.precio)} c/u</div>
-        </div>
-        <div class="cart-item-controls">
-          <button onclick="updateCartItem(${index}, -1)">-</button>
-          <span>${item.cantidad}</span>
-          <button onclick="updateCartItem(${index}, 1)">+</button>
-        </div>
-        <div style="font-weight: bold; min-width: 60px; text-align: right;">
-          ${formatCurrency(item.cantidad * item.precio - item.descuento)}
-        </div>
-      </div>
-    `).join('');
-  }
-  
-  // Calcular totales
-  const subtotal = cart.reduce((sum, item) => sum + (item.cantidad * item.precio), 0);
-  const discount = cart.reduce((sum, item) => sum + item.descuento, 0);
-  const total = subtotal - discount;
-  
-  $('#cart-subtotal').textContent = formatCurrency(subtotal);
-  $('#cart-discount').textContent = formatCurrency(discount);
-  $('#cart-total').textContent = formatCurrency(total);
-}
-
-function updateCartItem(index, change) {
-  const item = cart[index];
-  const product = products.find(p => p.id === item.producto_id);
-  
-  if (change > 0 && item.cantidad >= product.stock_actual) {
-    showToast('No hay más stock disponible', 'warning');
+    container.innerHTML = '<p style="text-align: center; padding: 2rem; color: var(--text-muted);">Carrito vacío</p>';
+    updateTotals();
     return;
   }
   
-  item.cantidad += change;
+  container.innerHTML = cart.map((item, index) => `
+    <div class="cart-item" role="listitem">
+      <div class="cart-item-info">
+        <div class="cart-item-name">${item.nombre}</div>
+        <div class="cart-item-price">${formatCurrency(item.precio)} c/u</div>
+      </div>
+      <div class="cart-item-controls">
+        <button onclick="updateCartQty(${index}, -1)" aria-label="Reducir cantidad">−</button>
+        <span aria-label="Cantidad">${item.cantidad}</span>
+        <button onclick="updateCartQty(${index}, 1)" aria-label="Aumentar cantidad">+</button>
+      </div>
+      <div style="font-weight: 600; min-width: 70px; text-align: right;">
+        ${formatCurrency(item.precio * item.cantidad)}
+      </div>
+    </div>
+  `).join('');
   
-  if (item.cantidad <= 0) {
-    cart.splice(index, 1);
-  }
-  
-  updateCartUI();
+  updateTotals();
 }
 
-$('#btn-clear-cart')?.addEventListener('click', () => {
-  cart = [];
-  updateCartUI();
-});
+function updateCartQty(index, delta) {
+  const item = cart[index];
+  if (!item) return;
+  
+  const producto = products.find(p => p.id === item.id);
+  const nuevaCantidad = item.cantidad + delta;
+  
+  if (nuevaCantidad <= 0) {
+    cart.splice(index, 1);
+  } else if (nuevaCantidad > producto.stock_actual) {
+    showToast('No hay más stock disponible', 'warning');
+    return;
+  } else {
+    item.cantidad = nuevaCantidad;
+  }
+  
+  renderCart();
+}
 
-// Checkout modal
-$('#btn-checkout')?.addEventListener('click', () => {
+function clearCart() {
+  if (cart.length === 0) return;
+  
+  if (confirm('¿Vaciar carrito?')) {
+    cart = [];
+    renderCart();
+  }
+}
+
+function updateTotals() {
+  const subtotal = cart.reduce((sum, item) => sum + (item.precio * item.cantidad), 0);
+  const descuento = 0; // Por ahora sin descuento
+  const total = subtotal - descuento;
+  
+  $('#cart-subtotal').textContent = formatCurrency(subtotal);
+  $('#cart-discount').textContent = formatCurrency(descuento);
+  $('#cart-total').textContent = formatCurrency(total);
+  
+  // Actualizar modal
+  $('#checkout-total-amount').textContent = formatCurrency(total);
+}
+
+function showCheckoutModal() {
   if (cart.length === 0) {
     showToast('El carrito está vacío', 'warning');
     return;
   }
   
   if (!currentTurno) {
-    showToast('Debe abrir un turno antes de vender', 'warning');
+    showToast('Debe abrir un turno para vender', 'error');
+    showView('turnos');
     return;
   }
   
-  const total = cart.reduce((sum, item) => sum + (item.cantidad * item.precio - item.descuento), 0);
-  $('#checkout-total').textContent = formatCurrency(total);
-  $('#modal-checkout').classList.add('active');
-});
+  openModal('modal-checkout');
+  
+  // Resetear formulario
+  $('#checkout-form').reset();
+  $('#cambio-display').textContent = '';
+  $('#efectivo-recibido').value = '';
+  
+  // Foco en campo efectivo
+  setTimeout(() => $('#efectivo-recibido')?.focus(), 100);
+}
 
-$$('.btn-close, .modal .btn-close')?.forEach(btn => {
-  btn.addEventListener('click', () => {
-    $$('.modal').forEach(m => m.classList.remove('active'));
-  });
-});
-
-// Manejar método de pago
-$$('input[name="metodo_pago"]')?.forEach(radio => {
-  radio.addEventListener('change', (e) => {
-    const efectivoGroup = $('#efectivo-group');
-    if (e.target.value === 'transferencia') {
-      efectivoGroup.style.display = 'none';
-    } else {
-      efectivoGroup.style.display = 'block';
-    }
-  });
-});
-
-// Calcular cambio
-$('#efectivo-recibido')?.addEventListener('input', (e) => {
-  const total = parseFloat(cart.reduce((sum, item) => sum + (item.cantidad * item.precio - item.descuento), 0));
-  const recibido = parseFloat(e.target.value) || 0;
+function calcularCambio() {
+  const total = cart.reduce((sum, item) => sum + (item.precio * item.cantidad), 0);
+  const recibido = parseFloat($('#efectivo-recibido').value) || 0;
   const cambio = recibido - total;
   
   const display = $('#cambio-display');
   if (cambio >= 0) {
     display.textContent = `Cambio: ${formatCurrency(cambio)}`;
-    display.style.color = 'var(--success-color)';
+    display.style.color = 'var(--success)';
   } else {
     display.textContent = `Falta: ${formatCurrency(Math.abs(cambio))}`;
-    display.style.color = 'var(--danger-color)';
+    display.style.color = 'var(--danger)';
   }
-});
+}
 
-// Confirmar venta
-$('#btn-confirm-sale')?.addEventListener('click', async () => {
-  const total = cart.reduce((sum, item) => sum + (item.cantidad * item.precio - item.descuento), 0);
-  const metodoPago = $$('input[name="metodo_pago"]:checked')?.[0]?.value || 'efectivo';
-  const efectivoRecibido = parseFloat($('#efectivo-recibido')?.value) || 0;
+async function confirmarVenta() {
+  const total = cart.reduce((sum, item) => sum + (item.precio * item.cantidad), 0);
+  const metodoPago = document.querySelector('input[name="metodo_pago"]:checked')?.value || 'efectivo';
+  const efectivoRecibido = parseFloat($('#efectivo-recibido').value) || 0;
   
-  if ((metodoPago === 'efectivo' || metodoPago === 'mixto') && efectivoRecibido < total) {
-    showToast('El efectivo recibido es menor que el total', 'error');
+  // Validaciones
+  if (metodoPago === 'efectivo' && efectivoRecibido < total) {
+    showToast('El efectivo recibido es insuficiente', 'error');
     return;
   }
   
+  const ventaData = {
+    turno_id: currentTurno.id,
+    detalle: cart.map(item => ({
+      producto_id: item.id,
+      cantidad: item.cantidad,
+      precio_unitario: item.precio,
+      descuento: 0
+    })),
+    metodo_pago: metodoPago,
+    efectivo_recibido: metodoPago === 'efectivo' ? efectivoRecibido : total
+  };
+  
   try {
-    const ventaData = {
-      turno_id: currentTurno?.id,
-      punto_venta_id: currentTurno?.id ? null : (JSON.parse(localStorage.getItem('user')).punto_venta_id),
-      metodo_pago: metodoPago,
-      efectivo_recibido: efectivoRecibido,
-      total: total,
-      detalle: cart.map(item => ({
-        producto_id: item.producto_id,
-        cantidad: item.cantidad,
-        precio_unitario: item.precio,
-        descuento: item.descuento
-      }))
-    };
-    
     const response = await apiFetch('/ventas', {
       method: 'POST',
       body: JSON.stringify(ventaData)
     });
     
-    const data = await response.json();
+    const result = await response.json();
     
-    if (response.ok) {
-      showToast('¡Venta registrada exitosamente!', 'success');
-      cart = [];
-      updateCartUI();
-      $('#modal-checkout').classList.remove('active');
-      
-      // Recargar productos para actualizar stock
-      await loadPOS();
-      
-      // Imprimir ticket (opcional)
-      printTicket(data.venta);
-    } else {
-      showToast(data.error, 'error');
+    if (!response.ok) {
+      throw new Error(result.error || 'Error al registrar venta');
     }
+    
+    // Éxito
+    showToast('¡Venta registrada con éxito!', 'success');
+    
+    // Imprimir ticket (opcional)
+    imprimirTicket(result.venta);
+    
+    // Limpiar carrito y cerrar modal
+    cart = [];
+    renderCart();
+    closeModal('modal-checkout');
+    
+    // Recargar productos (actualizar stock)
+    loadPOS();
+    
   } catch (error) {
     console.error('Error registrando venta:', error);
-    showToast('Error al registrar venta', 'error');
+    showToast(error.message || 'Error al registrar venta', 'error');
   }
-});
+}
 
-function printTicket(venta) {
-  // Aquí iría la lógica de impresión
-  // Por ahora solo mostramos un toast
-  showToast('Ticket listo para imprimir', 'success');
+function imprimirTicket(venta) {
+  const ticketDiv = $('#ticket-print');
+  if (!ticketDiv) return;
+  
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const fecha = new Date().toLocaleString('es-CU');
+  
+  ticketDiv.innerHTML = `
+    <div style="text-align: center;">
+      <strong>TU MERKADITO</strong><br>
+      Ticket #${venta.id}<br>
+      ${fecha}<br>
+      Vendedor: ${user.nombre}<br>
+      ────────────────────
+    </div>
+    ${cart.map(item => `
+      <div style="display: flex; justify-content: space-between; margin: 5px 0;">
+        <span>${item.cantidad} x ${item.nombre.substring(0, 20)}</span>
+        <span>${formatCurrency(item.precio * item.cantidad)}</span>
+      </div>
+    `).join('')}
+    <div style="border-top: 1px dashed #000; margin-top: 10px; padding-top: 10px;">
+      <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 14px;">
+        <span>TOTAL:</span>
+        <span>${formatCurrency(venta.total)}</span>
+      </div>
+      <div style="display: flex; justify-content: space-between; margin-top: 5px;">
+        <span>Pago:</span>
+        <span>${venta.metodo_pago}</span>
+      </div>
+    </div>
+    <div style="text-align: center; margin-top: 15px;">
+      ¡Gracias por su compra!
+    </div>
+  `;
+  
+  // Imprimir
+  window.print();
+  
+  // Limpiar después de imprimir
+  setTimeout(() => ticketDiv.innerHTML = '', 1000);
+}
+
+// Utilidades de modal
+function openModal(modalId) {
+  const modal = document.getElementById(modalId);
+  if (modal) {
+    modal.classList.add('active');
+    modal.setAttribute('aria-hidden', 'false');
+    
+    // Foco trap para accesibilidad
+    const focusable = modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    if (focusable.length) focusable[0].focus();
+  }
+}
+
+function closeModal(modalId) {
+  const modal = document.getElementById(modalId);
+  if (modal) {
+    modal.classList.remove('active');
+    modal.setAttribute('aria-hidden', 'true');
+  }
 }

@@ -1,23 +1,19 @@
-// Tu Merkadito - Aplicación principal
+// Tu Merkadito - Aplicación Principal
 
 const API_BASE = '/api/v1';
 let currentUser = null;
 let currentTurno = null;
 
 // Utilidades
-function $(selector) {
-  return document.querySelector(selector);
-}
-
-function $$(selector) {
-  return document.querySelectorAll(selector);
-}
+function $(selector) { return document.querySelector(selector); }
+function $$(selector) { return document.querySelectorAll(selector); }
 
 function formatCurrency(amount) {
-  return '$' + parseFloat(amount).toFixed(2);
+  return '$' + parseFloat(amount || 0).toFixed(2);
 }
 
 function formatDate(dateString) {
+  if (!dateString) return '';
   const date = new Date(dateString);
   return date.toLocaleDateString('es-CU') + ' ' + date.toLocaleTimeString('es-CU', { hour: '2-digit', minute: '2-digit' });
 }
@@ -28,18 +24,28 @@ function showToast(message, type = 'success') {
   toast.className = `toast ${type}`;
   toast.innerHTML = `<span>${message}</span>`;
   container.appendChild(toast);
-  
-  setTimeout(() => {
-    toast.remove();
-  }, 3000);
+  setTimeout(() => toast.remove(), 3000);
 }
 
 function showView(viewId) {
   $$('.view').forEach(v => v.classList.remove('active'));
-  $(`#view-${viewId}`).classList.add('active');
+  const target = $(`#view-${viewId}`);
+  if (target) {
+    target.classList.add('active');
+    target.focus();
+  }
+  
+  // Cargar datos según vista
+  if (viewId === 'dashboard') loadDashboard();
+  if (viewId === 'pos') loadPOS();
+  if (viewId === 'turnos') loadTurnosView();
+  if (viewId === 'inventario') loadInventario();
+  if (viewId === 'reportes') loadReportes();
+  if (viewId === 'usuarios') loadUsuarios && loadUsuarios();
+  if (viewId === 'productos') loadProductos && loadProductos();
 }
 
-// Verificar conexión
+// Estado de conexión
 function updateConnectionStatus() {
   const statusEl = $('#connection-status');
   const isOnline = navigator.onLine;
@@ -60,15 +66,7 @@ window.addEventListener('offline', updateConnectionStatus);
 function setupNavigation() {
   $$('[data-navigate]').forEach(btn => {
     btn.addEventListener('click', () => {
-      const view = btn.dataset.navigate;
-      showView(view);
-      
-      // Cargar datos según la vista
-      if (view === 'dashboard') loadDashboard();
-      if (view === 'pos') loadPOS();
-      if (view === 'turnos') loadTurnosView();
-      if (view === 'inventario') loadInventario();
-      if (view === 'reportes') loadReportes();
+      showView(btn.dataset.navigate);
     });
   });
 }
@@ -80,24 +78,32 @@ async function loadDashboard() {
     const data = await response.json();
     
     const cards = [
-      { title: 'Ventas Hoy', value: formatCurrency(data.ventas.total), color: 'primary' },
-      { title: 'Transacciones', value: data.ventas.cantidad, color: 'success' },
-      { title: 'Turnos Activos', value: data.turnos_activos, color: 'warning' },
-      { title: 'Alertas Stock', value: data.alertas_stock, color: 'danger' }
+      { title: '💰 Ventas Hoy', value: formatCurrency(data.ventas?.total || 0), color: 'primary' },
+      { title: '🧾 Transacciones', value: data.ventas?.cantidad || 0, color: 'success' },
+      { title: '⏰ Turnos Activos', value: data.turnos_activos || 0, color: 'warning' },
+      { title: '⚠️ Alertas Stock', value: data.alertas_stock || 0, color: 'danger' }
     ];
     
     $('#dashboard-cards').innerHTML = cards.map(card => `
-      <div class="dashboard-card" style="border-left-color: var(--${card.color}-color)">
+      <div class="dashboard-card" style="border-left-color: var(--${card.color})">
         <h3>${card.title}</h3>
         <div class="value">${card.value}</div>
       </div>
     `).join('');
+    
+    // Mostrar botones según rol
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const esAdmin = ['admin', 'dueño'].includes(user.rol);
+    $('#btn-usuarios').style.display = esAdmin ? 'flex' : 'none';
+    $('#btn-productos').style.display = esAdmin ? 'flex' : 'none';
+    
   } catch (error) {
     console.error('Error cargando dashboard:', error);
+    showToast('Error cargando datos del dashboard', 'error');
   }
 }
 
-// API Fetch con manejo de autenticación
+// API Fetch con autenticación
 async function apiFetch(endpoint, options = {}) {
   const token = localStorage.getItem('auth_token');
   
@@ -127,26 +133,23 @@ document.addEventListener('DOMContentLoaded', () => {
   updateConnectionStatus();
   setupNavigation();
   
-  // Verificar si hay sesión activa
   const savedUser = localStorage.getItem('user');
   const savedToken = localStorage.getItem('auth_token');
   
   if (savedUser && savedToken) {
-    currentUser = JSON.parse(savedUser);
     initApp();
   } else {
     showView('login');
   }
   
-  // Botón logout
   $('#btn-logout')?.addEventListener('click', logout);
 });
 
 function initApp() {
-  const user = JSON.parse(localStorage.getItem('user'));
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
   currentUser = user;
   
-  $('#user-info').textContent = `${user.nombre} (${user.rol})`;
+  $('#user-info').textContent = `${user.nombre || ''} (${user.rol || ''})`;
   showView('dashboard');
   loadDashboard();
 }
