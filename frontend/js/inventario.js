@@ -1,101 +1,124 @@
-// Tu Merkadito - Gestión de Inventario
+// Tu Merkadito - Módulo de Inventario
+
+document.addEventListener('DOMContentLoaded', () => {
+  $('#inventario-search')?.addEventListener('input', filtrarInventario);
+  $('#btn-nuevo-producto')?.addEventListener('click', () => {
+    showToast('Funcionalidad para administradores', 'warning');
+  });
+});
 
 async function loadInventario() {
   try {
-    const response = await apiFetch('/inventario/stock');
-    const productos = await response.json();
+    const response = await apiFetch('/productos?activo=1');
+    const data = await response.json();
     
+    const productos = data.productos || data;
     renderInventario(productos);
-    await loadCategorias();
-    await loadAlertas();
+    cargarCategoriasInventario(productos);
+    mostrarAlertasStock(productos);
+    
   } catch (error) {
     console.error('Error cargando inventario:', error);
-    showToast('Error al cargar inventario', 'error');
+    showToast('Error cargando inventario', 'error');
   }
 }
 
 function renderInventario(productos) {
   const tbody = $('#inventario-table-body');
+  if (!tbody) return;
   
   if (productos.length === 0) {
     tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 2rem;">No hay productos registrados</td></tr>';
     return;
   }
   
-  tbody.innerHTML = productos.map(p => `
-    <tr>
-      <td>${p.codigo || '-'}</td>
-      <td>${p.nombre}</td>
-      <td style="${p.stock_actual <= p.stock_minimo ? 'color: var(--danger-color); font-weight: bold;' : ''}">
-        ${p.stock_actual} ${p.unidad}
-      </td>
-      <td>${p.stock_minimo}</td>
-      <td>${formatCurrency(p.precio)}</td>
-      <td>
-        ${p.stock_actual === 0 
-          ? '<span style="color: var(--danger-color);">Sin stock</span>'
-          : p.stock_actual <= p.stock_minimo
-            ? '<span style="color: var(--warning-color);">Crítico</span>'
-            : '<span style="color: var(--success-color);">Normal</span>'
-        }
-      </td>
-    </tr>
-  `).join('');
+  tbody.innerHTML = productos.map(p => {
+    const sinStock = p.stock_actual <= 0;
+    const bajoStock = p.stock_actual <= p.stock_minimo && p.stock_actual > 0;
+    const estadoClass = sinStock ? 'color: var(--danger)' : (bajoStock ? 'color: var(--warning)' : 'color: var(--success)');
+    const estadoTexto = sinStock ? 'Sin Stock' : (bajoStock ? 'Bajo Stock' : 'OK');
+    
+    return `
+      <tr>
+        <td>${p.codigo || '-'}</td>
+        <td><strong>${p.nombre}</strong></td>
+        <td>${p.stock_actual} ${p.unidad || 'ud'}</td>
+        <td>${p.stock_minimo}</td>
+        <td>${formatCurrency(p.precio)}</td>
+        <td style="${estadoClass}; font-weight: 600;">${estadoTexto}</td>
+      </tr>
+    `;
+  }).join('');
 }
 
-async function loadCategorias() {
-  try {
-    // Las categorías se pueden obtener de los productos ya cargados
-    // O hacer una llamada específica si existe el endpoint
-  } catch (error) {
-    console.error('Error cargando categorías:', error);
-  }
+function cargarCategoriasInventario(productos) {
+  const select = $('#inventario-categoria');
+  if (!select) return;
+  
+  const categorias = [...new Set(productos.map(p => p.categoria).filter(Boolean))];
+  
+  select.innerHTML = `
+    <option value="">Todas las categorías</option>
+    ${categorias.map(c => `<option value="${c}">${c}</option>`).join('')}
+  `;
+  
+  select.addEventListener('change', () => {
+    filtrarInventario();
+  });
 }
 
-async function loadAlertas() {
-  try {
-    const response = await apiFetch('/inventario/alertas');
-    const alertas = await response.json();
-    
-    const container = $('#inventario-alertas');
-    
-    if (alertas.length === 0) {
-      container.innerHTML = '';
-      return;
-    }
-    
-    container.innerHTML = `
-      <div class="alerta alerta-warning">
-        <strong>⚠️ ${alertas.length} producto(s) con stock crítico</strong>
+function mostrarAlertasStock(productos) {
+  const container = $('#inventario-alertas');
+  if (!container) return;
+  
+  const sinStock = productos.filter(p => p.stock_actual <= 0);
+  const bajoStock = productos.filter(p => p.stock_actual <= p.stock_minimo && p.stock_actual > 0);
+  
+  let html = '';
+  
+  if (sinStock.length > 0) {
+    html += `
+      <div class="alerta alerta-danger">
+        ⚠️ <strong>${sinStock.length} producto(s) sin stock:</strong> 
+        ${sinStock.slice(0, 5).map(p => p.nombre).join(', ')}${sinStock.length > 5 ? '...' : ''}
       </div>
     `;
-  } catch (error) {
-    console.error('Error cargando alertas:', error);
   }
+  
+  if (bajoStock.length > 0) {
+    html += `
+      <div class="alerta alerta-warning">
+        ⚡ <strong>${bajoStock.length} producto(s) con stock bajo:</strong> 
+        ${bajoStock.slice(0, 5).map(p => p.nombre).join(', ')}${bajoStock.length > 5 ? '...' : ''}
+      </div>
+    `;
+  }
+  
+  container.innerHTML = html;
 }
 
-// Búsqueda en inventario
-$('#inventario-search')?.addEventListener('input', async (e) => {
-  const term = e.target.value;
+function filtrarInventario() {
+  const search = ($('#inventario-search')?.value || '').toLowerCase();
+  const categoria = $('#inventario-categoria')?.value || '';
   
-  try {
-    const response = await apiFetch(`/productos?search=${encodeURIComponent(term)}`);
-    const productos = await response.json();
-    renderInventario(productos);
-  } catch (error) {
-    console.error('Error buscando productos:', error);
-  }
-});
-
-// Filtro por categoría
-$('#inventario-categoria')?.addEventListener('change', async (e) => {
-  const categoria = e.target.value;
-  
-  try {
-    const response = await apiFetch(`/productos?categoria=${categoria}`);
-    const productos = await response.json();
-    renderInventario(productos);
-  } catch (error) {
-    console.error('Error filtrando productos:', error);
-  }
-});
+  // Recargar y filtrar
+  apiFetch('/productos?activo=1')
+    .then(r => r.json())
+    .then(data => {
+      let productos = data.productos || data;
+      
+      if (search) {
+        productos = productos.filter(p => 
+          p.nombre.toLowerCase().includes(search) ||
+          (p.codigo && p.codigo.toLowerCase().includes(search))
+        );
+      }
+      
+      if (categoria) {
+        productos = productos.filter(p => p.categoria === categoria);
+      }
+      
+      renderInventario(productos);
+    })
+    .catch(err => console.error('Error filtrando:', err));
+}

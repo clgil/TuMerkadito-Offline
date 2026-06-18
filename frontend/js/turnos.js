@@ -1,105 +1,195 @@
-// Tu Merkadito - Gestión de Turnos
+// Tu Merkadito - Módulo de Turnos
+
+document.addEventListener('DOMContentLoaded', () => {
+  $('#btn-abrir-turno')?.addEventListener('click', abrirTurno);
+  $('#btn-cerrar-turno')?.addEventListener('click', cerrarTurno);
+});
 
 async function loadTurnosView() {
   await checkTurnoActivo();
-  renderTurnoActivo();
   await loadTurnosHistorial();
 }
 
-function renderTurnoActivo() {
-  const container = $('#turno-activo-info');
-  const btnAbrir = $('#btn-abrir-turno');
-  const btnCerrar = $('#btn-cerrar-turno');
-  
-  if (currentTurno) {
-    container.innerHTML = `
-      <div class="dashboard-card" style="border-left-color: var(--success-color)">
-        <h3>Turno Activo #${currentTurno.id}</h3>
-        <p><strong>Punto de Venta:</strong> ${currentTurno.punto_venta_nombre}</p>
-        <p><strong>Apertura:</strong> ${formatDate(currentTurno.fecha_apertura)}</p>
-        <p><strong>Monto Inicial:</strong> ${formatCurrency(currentTurno.monto_inicial)}</p>
-        <p><strong>Ventas:</strong> ${currentTurno.cantidad_ventas || 0} (${formatCurrency(currentTurno.total_ventas || 0)})</p>
-      </div>
-    `;
+async function checkTurnoActivo() {
+  try {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const response = await apiFetch(`/turnos/activo?vendedor_id=${user.id}`);
+    const data = await response.json();
     
-    btnAbrir.disabled = true;
-    btnCerrar.disabled = false;
-  } else {
-    container.innerHTML = '<p>No hay turnos activos en este momento.</p>';
-    btnAbrir.disabled = false;
-    btnCerrar.disabled = true;
+    const banner = $('#turno-activo-banner');
+    const btnAbrir = $('#btn-abrir-turno');
+    const btnCerrar = $('#btn-cerrar-turno');
+    
+    if (data.turno) {
+      // Hay turno activo
+      if (banner) {
+        banner.innerHTML = `
+          <strong>✅ Turno #${data.turno.id} Activo</strong><br>
+          Apertura: ${formatDate(data.turno.fecha_apertura)}<br>
+          Caja inicial: ${formatCurrency(data.turno.monto_inicial)}<br>
+          Ventas actuales: ${formatCurrency(data.turno.ventas_total || 0)}
+        `;
+      }
+      
+      if (btnAbrir) btnAbrir.disabled = true;
+      if (btnCerrar) btnCerrar.disabled = false;
+      
+      currentTurno = data.turno;
+    } else {
+      // No hay turno
+      if (banner) {
+        banner.innerHTML = `
+          <strong>⚠️ Sin Turno Activo</strong><br>
+          Debe abrir un turno para comenzar a vender
+        `;
+      }
+      
+      if (btnAbrir) btnAbrir.disabled = false;
+      if (btnCerrar) btnCerrar.disabled = true;
+      
+      currentTurno = null;
+    }
+    
+  } catch (error) {
+    console.error('Error verificando turno:', error);
   }
 }
 
-$('#btn-abrir-turno')?.addEventListener('click', async () => {
-  await openTurno();
-  renderTurnoActivo();
-});
-
-$('#btn-cerrar-turno')?.addEventListener('click', async () => {
-  if (!currentTurno) return;
+async function abrirTurno() {
+  const montoInicial = prompt('Monto inicial en caja (CUP):', '0');
+  if (montoInicial === null) return;
   
-  const montoEfectivo = prompt('Ingrese el monto total en efectivo contado:') || '0';
-  const montoTransferencia = prompt('Ingrese el monto total en transferencias (si aplica, 0 si no):') || '0';
-  const notaAjuste = prompt('Nota para el ajuste (opcional):') || '';
+  const monto = parseFloat(montoInicial) || 0;
+  if (monto < 0) {
+    showToast('El monto inicial no puede ser negativo', 'error');
+    return;
+  }
   
   try {
-    const response = await apiFetch('/turnos/cerrar', {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    
+    const response = await apiFetch('/turnos', {
       method: 'POST',
       body: JSON.stringify({
-        turno_id: currentTurno.id,
-        monto_efectivo: parseFloat(montoEfectivo),
-        monto_transferencias: parseFloat(montoTransferencia),
-        nota_ajuste: notaAjuste
+        punto_venta_id: user.punto_venta_id,
+        vendedor_id: user.id,
+        monto_inicial: monto
       })
     });
     
-    const data = await response.json();
+    const result = await response.json();
     
-    if (response.ok) {
-      showToast(`Turno cerrado. Diferencia: ${formatCurrency(data.resumen.diferencia)}`, 'success');
-      currentTurno = null;
-      renderTurnoActivo();
-      await loadTurnosHistorial();
-    } else {
-      showToast(data.error, 'error');
+    if (!response.ok) {
+      throw new Error(result.error || 'Error al abrir turno');
     }
+    
+    showToast('Turno abierto exitosamente');
+    await checkTurnoActivo();
+    
   } catch (error) {
-    showToast('Error al cerrar turno', 'error');
+    console.error('Error abriendo turno:', error);
+    showToast(error.message || 'Error al abrir turno', 'error');
   }
-});
+}
+
+async function cerrarTurno() {
+  if (!currentTurno) {
+    showToast('No hay turno activo para cerrar', 'error');
+    return;
+  }
+  
+  const montoFinal = prompt(
+    `Monto final en caja para el turno #${currentTurno.id}\n` +
+    `Ventas registradas: ${formatCurrency(currentTurno.ventas_total || 0)}\n` +
+    `Caja inicial: ${formatCurrency(currentTurno.monto_inicial)}\n` +
+    `Total esperado: ${formatCurrency((currentTurno.ventas_total || 0) + currentTurno.monto_inicial)}\n\n` +
+    'Monto final (CUP):', 
+    String((currentTurno.ventas_total || 0) + currentTurno.monto_inicial)
+  );
+  
+  if (montoFinal === null) return;
+  
+  const monto = parseFloat(montoFinal) || 0;
+  
+  try {
+    const response = await apiFetch(`/turnos/${currentTurno.id}/cerrar`, {
+      method: 'POST',
+      body: JSON.stringify({ monto_final: monto })
+    });
+    
+    const result = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(result.error || 'Error al cerrar turno');
+    }
+    
+    const diferencia = monto - ((currentTurno.ventas_total || 0) + currentTurno.monto_inicial);
+    
+    let mensaje = 'Turno cerrado exitosamente\n';
+    if (diferencia !== 0) {
+      mensaje += diferencia > 0 
+        ? `✅ Sobrante: ${formatCurrency(diferencia)}`
+        : `⚠️ Faltante: ${formatCurrency(Math.abs(diferencia))}`;
+    }
+    
+    alert(mensaje);
+    showToast('Turno cerrado correctamente');
+    
+    await checkTurnoActivo();
+    await loadTurnosHistorial();
+    
+  } catch (error) {
+    console.error('Error cerrando turno:', error);
+    showToast(error.message || 'Error al cerrar turno', 'error');
+  }
+}
 
 async function loadTurnosHistorial() {
   try {
-    const response = await apiFetch('/turnos/historial?limite=50');
-    const turnos = await response.json();
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const esAdmin = ['admin', 'dueño'].includes(user.rol);
     
+    const url = esAdmin 
+      ? '/turnos?limit=50'
+      : `/turnos?vendedor_id=${user.id}&limit=50`;
+    
+    const response = await apiFetch(url);
+    const data = await response.json();
+    
+    const turnos = data.turnos || data;
     const tbody = $('#turnos-table-body');
+    
+    if (!tbody) return;
     
     if (turnos.length === 0) {
       tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 2rem;">No hay turnos registrados</td></tr>';
       return;
     }
     
-    tbody.innerHTML = turnos.map(t => `
-      <tr>
-        <td>${formatDate(t.fecha_apertura)}</td>
-        <td>${t.vendedor_nombre}</td>
-        <td>${t.punto_venta_nombre}</td>
-        <td>${formatCurrency(t.monto_inicial)}</td>
-        <td>${formatCurrency(t.monto_esperado || 0)}</td>
-        <td>${formatCurrency((t.monto_efectivo || 0) + (t.monto_transferencias || 0))}</td>
-        <td style="color: ${(t.ajuste || 0) >= 0 ? 'var(--success-color)' : 'var(--danger-color)'}">
-          ${formatCurrency(t.ajuste || 0)}
-        </td>
-        <td>
-          <span style="padding: 0.25rem 0.5rem; border-radius: 4px; background: ${t.estado === 'cerrado' ? '#D1FAE5' : '#FEF3C7'}; color: ${t.estado === 'cerrado' ? '#065F46' : '#92400E'}; font-size: 0.75rem;">
-            ${t.estado}
-          </span>
-        </td>
-      </tr>
-    `).join('');
+    tbody.innerHTML = turnos.map(t => {
+      const esperado = (t.ventas_total || 0) + t.monto_inicial;
+      const diferencia = (t.monto_final || 0) - esperado;
+      const diffClass = diferencia === 0 ? '' : (diferencia > 0 ? 'color: var(--success)' : 'color: var(--danger)');
+      
+      return `
+        <tr>
+          <td>${formatDate(t.fecha_apertura)}</td>
+          <td>${t.vendedor_nombre || '-'}</td>
+          <td>${t.pv_nombre || '-'}</td>
+          <td>${formatCurrency(t.monto_inicial)}</td>
+          <td>${formatCurrency(t.ventas_total || 0)}</td>
+          <td>${formatCurrency(t.monto_final || 0)}</td>
+          <td style="${diffClass}">${diferencia !== 0 ? formatCurrency(diferencia) : '✓'}</td>
+          <td>
+            <span style="padding: 0.25rem 0.5rem; border-radius: 4px; background: ${t.estado === 'cerrado' ? '#DCFCE7' : '#FEF3C7'}; color: ${t.estado === 'cerrado' ? '#166534' : '#92400E'}; font-size: 0.75rem; font-weight: 600;">
+              ${t.estado}
+            </span>
+          </td>
+        </tr>
+      `;
+    }).join('');
+    
   } catch (error) {
-    console.error('Error cargando historial:', error);
+    console.error('Error cargando historial de turnos:', error);
   }
 }
