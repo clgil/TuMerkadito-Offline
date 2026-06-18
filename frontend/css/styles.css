@@ -750,6 +750,19 @@ body {
 
 .error-message.visible { display: block; }
 
+/* Session Expired Alert */
+.session-expired-alert {
+  color: #92400E;
+  font-size: 0.875rem;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  background: #FEF3C7;
+  border: 1px solid #FCD34D;
+  border-radius: var(--radius);
+  font-weight: 500;
+  text-align: center;
+}
+
 /* Turnos Banner */
 .turno-banner {
   padding: 1.5rem;

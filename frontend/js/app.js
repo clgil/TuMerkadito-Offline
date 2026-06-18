@@ -251,7 +251,7 @@ async function loadDashboard() {
   }
 }
 
-// API Fetch con autenticación
+// API Fetch con autenticación e interceptores
 async function apiFetch(endpoint, options = {}) {
   const token = localStorage.getItem('auth_token');
   
@@ -264,16 +264,39 @@ async function apiFetch(endpoint, options = {}) {
     }
   };
   
-  const response = await fetch(`${API_BASE}${endpoint}`, config);
-  
-  if (response.status === 401) {
-    localStorage.removeItem('auth_token');
-    localStorage.removeItem('user');
-    window.location.reload();
-    throw new Error('Sesión expirada');
+  try {
+    const response = await fetch(`${API_BASE}${endpoint}`, config);
+    
+    // Interceptor de respuesta - manejar 401 (Token expirado)
+    if (response.status === 401) {
+      // Limpiar estado de autenticación
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('user');
+      
+      // Mostrar mensaje amigable
+      showToast('⚠️ Tu sesión ha expirado. Por favor, inicia sesión nuevamente.', 'error');
+      
+      // Redirigir al login con parámetro session_expired
+      if (window.location.pathname !== '/' && !window.location.href.includes('session_expired')) {
+        const url = new URL(window.location);
+        url.searchParams.set('session_expired', 'true');
+        window.location.href = '/#' + url.search;
+      } else {
+        showView('login');
+      }
+      
+      throw new Error('Sesión expirada');
+    }
+    
+    return response;
+  } catch (error) {
+    // Manejo de errores de red
+    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      console.error('Error de conexión:', error);
+      throw new Error('Error de conexión. Verifica tu conexión a internet.');
+    }
+    throw error;
   }
-  
-  return response;
 }
 
 // Inicialización
