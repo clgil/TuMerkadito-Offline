@@ -1,22 +1,20 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../database');
+const { authMiddleware, canManageInventory } = require('../middleware/auth');
 
 /**
  * GET /api/v1/inventario/stock
  * Obtener stock actual por almacén
  */
-router.get('/stock', (req, res) => {
+router.get('/stock', authMiddleware, (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Token no proporcionado' });
-    }
+    const decoded = req.user;
     
-    const token = authHeader.split(' ')[1];
-    const jwt = require('jsonwebtoken');
-    const { JWT_SECRET } = require('../middleware/auth');
-    const decoded = jwt.verify(token, JWT_SECRET);
+    // Verificar permisos para ver inventario
+    if (!canManageInventory(decoded) && !['admin', 'dueño'].includes(decoded.rol)) {
+      return res.status(403).json({ error: 'No tiene permisos para ver inventario' });
+    }
     
     const { almacen_id, categoria } = req.query;
     
@@ -61,17 +59,14 @@ router.get('/stock', (req, res) => {
  * GET /api/v1/inventario/alertas
  * Obtener alertas de stock crítico
  */
-router.get('/alertas', (req, res) => {
+router.get('/alertas', authMiddleware, (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Token no proporcionado' });
-    }
+    const decoded = req.user;
     
-    const token = authHeader.split(' ')[1];
-    const jwt = require('jsonwebtoken');
-    const { JWT_SECRET } = require('../middleware/auth');
-    const decoded = jwt.verify(token, JWT_SECRET);
+    // Verificar permisos para ver alertas (almacenero, admin o dueño)
+    if (!canManageInventory(decoded) && !['admin', 'dueño'].includes(decoded.rol)) {
+      return res.status(403).json({ error: 'No tiene permisos para ver alertas de stock' });
+    }
     
     const alertas = db.prepare(`
       SELECT p.*, 
@@ -96,18 +91,15 @@ router.get('/alertas', (req, res) => {
  * POST /api/v1/movimientos/entrada
  * Registrar entrada de inventario (compra)
  */
-router.post('/entrada', (req, res) => {
+router.post('/entrada', authMiddleware, (req, res) => {
   const transaction = db.transaction(() => {
     try {
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Token no proporcionado' });
-      }
+      const decoded = req.user;
       
-      const token = authHeader.split(' ')[1];
-      const jwt = require('jsonwebtoken');
-      const { JWT_SECRET } = require('../middleware/auth');
-      const decoded = jwt.verify(token, JWT_SECRET);
+      // Verificar permisos para gestionar inventario
+      if (!canManageInventory(decoded)) {
+        return res.status(403).json({ error: 'No tiene permisos para gestionar inventario' });
+      }
       
       const { producto_id, almacen_id, cantidad, costo_unitario, motivo, proveedor } = req.body;
       
@@ -171,18 +163,15 @@ router.post('/entrada', (req, res) => {
  * POST /api/v1/movimientos/salida
  * Registrar salida de inventario (merma, daño, ajuste)
  */
-router.post('/salida', (req, res) => {
+router.post('/salida', authMiddleware, (req, res) => {
   const transaction = db.transaction(() => {
     try {
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Token no proporcionado' });
-      }
+      const decoded = req.user;
       
-      const token = authHeader.split(' ')[1];
-      const jwt = require('jsonwebtoken');
-      const { JWT_SECRET } = require('../middleware/auth');
-      const decoded = jwt.verify(token, JWT_SECRET);
+      // Verificar permisos para gestionar inventario
+      if (!canManageInventory(decoded)) {
+        return res.status(403).json({ error: 'No tiene permisos para gestionar inventario' });
+      }
       
       const { producto_id, almacen_id, cantidad, motivo } = req.body;
       
@@ -243,18 +232,15 @@ router.post('/salida', (req, res) => {
  * POST /api/v1/movimientos/ajuste
  * Ajuste de inventario por conteo físico
  */
-router.post('/ajuste', (req, res) => {
+router.post('/ajuste', authMiddleware, (req, res) => {
   const transaction = db.transaction(() => {
     try {
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Token no proporcionado' });
-      }
+      const decoded = req.user;
       
-      const token = authHeader.split(' ')[1];
-      const jwt = require('jsonwebtoken');
-      const { JWT_SECRET } = require('../middleware/auth');
-      const decoded = jwt.verify(token, JWT_SECRET);
+      // Verificar permisos para gestionar inventario
+      if (!canManageInventory(decoded)) {
+        return res.status(403).json({ error: 'No tiene permisos para gestionar inventario' });
+      }
       
       const { producto_id, almacen_id, stock_real, motivo } = req.body;
       
@@ -322,17 +308,14 @@ router.post('/ajuste', (req, res) => {
  * GET /api/v1/movimientos/historial
  * Listar movimientos de inventario
  */
-router.get('/historial', (req, res) => {
+router.get('/historial', authMiddleware, (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Token no proporcionado' });
-    }
+    const decoded = req.user;
     
-    const token = authHeader.split(' ')[1];
-    const jwt = require('jsonwebtoken');
-    const { JWT_SECRET } = require('../middleware/auth');
-    const decoded = jwt.verify(token, JWT_SECRET);
+    // Verificar permisos para ver historial de inventario
+    if (!canManageInventory(decoded) && !['admin', 'dueño'].includes(decoded.rol)) {
+      return res.status(403).json({ error: 'No tiene permisos para ver historial de inventario' });
+    }
     
     const { fecha_desde, fecha_hasta, producto_id, tipo, limite = 100 } = req.query;
     
