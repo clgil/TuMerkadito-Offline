@@ -1,6 +1,25 @@
 // Tu Merkadito - Autenticación
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Verificar si hay parámetro session_expired en la URL (hash para SPA)
+  const hash = window.location.hash;
+  const urlParams = new URLSearchParams(hash.replace('#', ''));
+  const sessionExpired = urlParams.get('session_expired') === 'true' || 
+                         new URLSearchParams(window.location.search).get('session_expired') === 'true';
+  
+  if (sessionExpired) {
+    // Mostrar mensaje de sesión expirada en el formulario de login
+    const alertDiv = $('#session-expired-alert');
+    if (alertDiv) {
+      alertDiv.style.display = 'block';
+      alertDiv.setAttribute('role', 'alert');
+    }
+    // Limpiar parámetro del hash sin recargar
+    if (hash.includes('session_expired')) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }
+  
   const loginForm = $('#login-form');
   
   if (loginForm) {
@@ -10,6 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const email = $('#login-email').value.trim();
       const pin = $('#login-pin').value.trim();
       const errorDiv = $('#login-error');
+      const alertDiv = $('#session-expired-alert');
       const submitBtn = loginForm.querySelector('button[type="submit"]');
       
       if (!email || !pin) {
@@ -21,6 +41,7 @@ document.addEventListener('DOMContentLoaded', () => {
       submitBtn.disabled = true;
       submitBtn.textContent = 'Entrando...';
       errorDiv.classList.remove('visible');
+      if (alertDiv) alertDiv.style.display = 'none';
       
       try {
         const response = await fetch('/api/v1/auth/login', {
@@ -40,6 +61,12 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem('user', JSON.stringify(data.user));
         
         showToast('¡Bienvenido! ' + data.user.nombre);
+        
+        // Limpiar cualquier parámetro de sesión expirada
+        if (window.location.hash.includes('session_expired') || 
+            window.location.search.includes('session_expired')) {
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
         
         // Iniciar aplicación
         initApp();
