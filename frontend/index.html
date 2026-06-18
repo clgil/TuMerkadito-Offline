@@ -23,7 +23,7 @@
     </div>
     <nav class="drawer-content">
       <div class="drawer-section">
-        <div class="drawer-section-title">Navegación</div>
+        <div class="drawer-section-title">Navegación Principal</div>
         <a href="#" class="drawer-item active" data-navigate="dashboard">
           <span class="drawer-item-icon">🏠</span>
           <span>Inicio</span>
@@ -48,14 +48,34 @@
       
       <div class="drawer-section" id="drawer-admin-section" style="display:none;">
         <div class="drawer-section-title">Administración</div>
-        <a href="#" class="drawer-item" data-navigate="usuarios">
+        <a href="#" class="drawer-item" data-navigate="configuracion">
+          <span class="drawer-item-icon">⚙️</span>
+          <span>Configuración</span>
+        </a>
+        <a href="#" class="drawer-item" data-navigate="trabajadores">
           <span class="drawer-item-icon">👥</span>
+          <span>Gestión de Trabajadores</span>
+        </a>
+        <a href="#" class="drawer-item" data-navigate="puntos-venta">
+          <span class="drawer-item-icon">🏪</span>
+          <span>Puntos de Venta</span>
+        </a>
+        <a href="#" class="drawer-item" data-navigate="usuarios">
+          <span class="drawer-item-icon">🔐</span>
           <span>Usuarios</span>
         </a>
         <a href="#" class="drawer-item" data-navigate="productos">
           <span class="drawer-item-icon">🏷️</span>
           <span>Productos</span>
         </a>
+      </div>
+      
+      <div class="drawer-section">
+        <div class="drawer-section-title">Sincronización</div>
+        <button id="drawer-sync-btn" class="drawer-item" style="width:100%;text-align:left;border:none;cursor:pointer;background:none;">
+          <span class="drawer-item-icon">🔄</span>
+          <span>Sincronizar ahora</span>
+        </button>
       </div>
       
       <div class="drawer-section">
@@ -77,14 +97,14 @@
     <div class="header-content">
       <div style="display:flex;align-items:center;gap:1rem;">
         <button id="header-menu-btn" class="header-menu-btn" aria-label="Abrir menú">☰</button>
-        <h1 class="logo">🛒 Tu Merkadito</h1>
+        <h1 id="header-title" class="logo">🛒 Tu Merkadito</h1>
       </div>
       <div class="header-info">
         <span id="connection-status" class="status-indicator online" role="status" aria-live="polite">
           <span class="status-dot"></span>
           <span class="status-text">En línea</span>
         </span>
-        <button id="sync-indicator" class="sync-indicator" aria-label="Estado de sincronización">
+        <button id="sync-indicator" class="sync-indicator" aria-label="Estado de sincronización" title="Click para sincronizar manualmente">
           <span class="sync-icon">☁️</span>
           <span class="sync-text">Sincronizado</span>
         </button>
@@ -344,6 +364,71 @@
             <button id="btn-exportar-csv" class="btn btn-secondary">📥 Exportar CSV</button>
           </div>
           <div id="reporte-resultado" class="mt-4"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CONFIGURACIÓN -->
+    <section id="view-configuracion" class="view" aria-labelledby="configuracion-title">
+      <div class="container">
+        <h2 id="configuracion-title">⚙️ Configuración</h2>
+        <div class="card">
+          <h3>Datos de la Empresa</h3>
+          <form id="config-form">
+            <div class="form-group">
+              <label for="config-nombre">Nombre del Negocio</label>
+              <input type="text" id="config-nombre" placeholder="Ej: Bodega El Esfuerzo">
+            </div>
+            <div class="form-group">
+              <label for="config-nit">NIT / CIF</label>
+              <input type="text" id="config-nit" placeholder="Número de identificación tributaria">
+            </div>
+            <div class="form-group">
+              <label for="config-direccion">Dirección</label>
+              <input type="text" id="config-direccion" placeholder="Dirección completa">
+            </div>
+            <div class="form-group">
+              <label for="config-telefono">Teléfono</label>
+              <input type="tel" id="config-telefono" placeholder="+53 5XXX XXXX">
+            </div>
+            <button type="submit" class="btn btn-primary mt-4">Guardar Configuración</button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- TRABAJADORES -->
+    <section id="view-trabajadores" class="view" aria-labelledby="trabajadores-title">
+      <div class="container">
+        <h2 id="trabajadores-title">👥 Gestión de Trabajadores</h2>
+        <button id="btn-nuevo-trabajador" class="btn btn-primary mb-3">+ Nuevo Trabajador</button>
+        <div class="card">
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr><th>Nombre</th><th>Cargo</th><th>PV Asignado</th><th>Estado</th><th>Acciones</th></tr>
+              </thead>
+              <tbody id="trabajadores-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PUNTOS DE VENTA -->
+    <section id="view-puntos-venta" class="view" aria-labelledby="puntos-venta-title">
+      <div class="container">
+        <h2 id="puntos-venta-title">🏪 Puntos de Venta</h2>
+        <button id="btn-nuevo-pv" class="btn btn-primary mb-3">+ Nuevo Punto de Venta</button>
+        <div class="card">
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr><th>Nombre</th><th>Ubicación</th><th>Responsable</th><th>Estado</th><th>Acciones</th></tr>
+              </thead>
+              <tbody id="puntos-venta-table-body"></tbody>
+            </table>
+          </div>
         </div>
       </div>
     </section>
